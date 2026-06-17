@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:task_management_app/screens/home_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:task_management_app/providers/app_providers.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _isSignUpMode = false;
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -20,18 +23,43 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _handleLogin() {
+  Future<void> _handleSubmit() async {
     final isValid = _formKey.currentState?.validate() ?? false;
-    if (!isValid) {
-      return;
-    }
+    if (!isValid) return;
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => HomeScreen(email: _emailController.text.trim()),
-      ),
-    );
+    setState(() => _isLoading = true);
+    final authService = ref.read(authServiceProvider);
+
+    try {
+      if (_isSignUpMode) {
+        await authService.signUpWithEmailAndPassword(
+          _emailController.text.trim(),
+          _passwordController.text.trim(),
+        );
+      } else {
+        await authService.signInWithEmailAndPassword(
+          _emailController.text.trim(),
+          _passwordController.text.trim(),
+        );
+      }
+      // Routing is automatically handled by the Auth State Stream listener in main.dart
+    } catch (errorMessage) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(child: Text(errorMessage.toString())),
+            ],
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -53,26 +81,27 @@ class _LoginScreenState extends State<LoginScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Icon(
-                          Icons.lock_outline,
+                          _isSignUpMode ? Icons.person_add_outlined : Icons.lock_outline,
                           size: 52,
                           color: Theme.of(context).colorScheme.primary,
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'Welcome Back',
+                          _isSignUpMode ? 'Create Account' : 'Welcome Back',
                           textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.headlineSmall
-                              ?.copyWith(fontWeight: FontWeight.bold),
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Sign in to manage your tasks',
+                          _isSignUpMode
+                              ? 'Sign up to safely backup and manage your tasks'
+                              : 'Sign in to manage your tasks',
                           textAlign: TextAlign.center,
-                          style: Theme.of(
-                            context,
-                          ).textTheme.bodyMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.outline,
-                          ),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Theme.of(context).colorScheme.outline,
+                              ),
                         ),
                         const SizedBox(height: 28),
                         TextFormField(
@@ -85,14 +114,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           validator: (value) {
                             final email = value?.trim() ?? '';
-                            if (email.isEmpty) {
-                              return 'Please enter your email';
-                            }
-
-                            final emailRegex = RegExp(
-                              r'^[^\s@]+@[^\s@]+\.[^\s@]+$',
-                            );
-                            if (!emailRegex.hasMatch(email)) {
+                            if (email.isEmpty) return 'Please enter your email';
+                            if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
                               return 'Please enter a valid email';
                             }
                             return null;
@@ -108,38 +131,35 @@ class _LoginScreenState extends State<LoginScreen> {
                             prefixIcon: Icon(Icons.lock_outline),
                           ),
                           validator: (value) {
-                            if ((value ?? '').trim().isEmpty) {
-                              return 'Password cannot be empty';
+                            if ((value ?? '').trim().length < 6) {
+                              return 'Password must span 6 characters or greater';
                             }
                             return null;
                           },
                         ),
                         const SizedBox(height: 22),
                         ElevatedButton.icon(
-                          onPressed: _handleLogin,
+                          onPressed: _isLoading ? null : _handleSubmit,
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                           ),
-                          icon: const Icon(Icons.login),
-                          label: const Text('Login'),
+                          icon: _isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : Icon(_isSignUpMode ? Icons.person_add : Icons.login),
+                          label: Text(_isSignUpMode ? 'Sign Up' : 'Login'),
                         ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            TextButton(
-                              onPressed: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Password reset is not available yet.',
-                                    ),
-                                  ),
-                                );
-                              },
-                              child: const Text('Forgot Password?'),
-                            ),
-                          ],
+                        const SizedBox(height: 12),
+                        TextButton(
+                          onPressed: () {
+                            setState(() => _isSignUpMode = !_isSignUpMode);
+                          },
+                          child: Text(_isSignUpMode
+                              ? 'Already have an account? Sign In'
+                              : "Don't have an account? Sign Up"),
                         ),
                       ],
                     ),
