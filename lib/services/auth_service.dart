@@ -1,7 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // Stream listening dynamically to user auth updates
   Stream<User?> get authStateChanges => _auth.authStateChanges();
@@ -16,12 +18,28 @@ class AuthService {
     }
   }
 
-  Future<UserCredential> signUpWithEmailAndPassword(String email, String password) async {
+  // Signs up the user and saves their profile metadata straight to Firestore
+  Future<UserCredential> signUpWithEmailAndPassword(String name, String email, String password) async {
     try {
-      return await _auth.createUserWithEmailAndPassword(email: email, password: password);
+      final credential = await _auth.createUserWithEmailAndPassword(email: email, password: password);
+      
+      if (credential.user != null) {
+        // Save user details to Cloud Firestore
+        await _db.collection('users').doc(credential.user!.uid).set({
+          'name': name,
+          'email': email,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+      return credential;
     } on FirebaseAuthException catch (e) {
       throw _handleAuthException(e);
     }
+  }
+
+  // Streams real-time profile documents directly from Cloud Firestore
+  Stream<DocumentSnapshot<Map<String, dynamic>>> watchUserProfile(String uid) {
+    return _db.collection('users').doc(uid).snapshots();
   }
 
   Future<void> signOut() async {

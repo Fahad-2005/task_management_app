@@ -1,159 +1,78 @@
 import 'package:flutter/material.dart';
-import 'package:task_management_app/models/task.dart';
-import 'package:task_management_app/services/task_storage.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:task_management_app/providers/app_providers.dart';
 import 'package:task_management_app/screens/user_profile_screen.dart';
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key, required this.email});
 
   final String email;
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Watch Riverpod State pipelines directly[cite: 2]
+    final tasks = ref.watch(taskListProvider);
+    final firebaseUser = ref.watch(authServiceProvider).currentUser;
 
-class _HomeScreenState extends State<HomeScreen> {
-  final _taskStorage = TaskStorage();
-  final List<Task> _tasks = [];
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadTasks();
-  }
-
-  Future<void> _loadTasks() async {
-    final tasks = await _taskStorage.loadTasks();
-    if (!mounted) return;
-    setState(() {
-      _tasks
-        ..clear()
-        ..addAll(tasks);
-      _isLoading = false;
-    });
-  }
-
-  Future<void> _persistTasks() async {
-    await _taskStorage.saveTasks(_tasks);
-  }
-
-  Future<void> _showAddTaskDialog() async {
-    final controller = TextEditingController();
-    final title = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.add_task),
-              SizedBox(width: 8),
-              Text('Add Task'),
-            ],
-          ),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: const InputDecoration(
-              labelText: 'Task title',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.edit_note),
-            ),
-            onSubmitted: (value) => Navigator.pop(context, value),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton.icon(
-              onPressed: () => Navigator.pop(context, controller.text),
-              icon: const Icon(Icons.check),
-              label: const Text('Add'),
-            ),
-          ],
-        );
-      },
-    );
-    controller.dispose();
-
-    final trimmedTitle = title?.trim() ?? '';
-    if (trimmedTitle.isEmpty) return;
-
-    setState(() {
-      _tasks.add(Task(title: trimmedTitle));
-    });
-    await _persistTasks();
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.check_circle_outline, color: Colors.white),
-            SizedBox(width: 8),
-            Text('Task added'),
-          ],
-        ),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  void _toggleTask(int index) {
-    setState(() {
-      _tasks[index] = _tasks[index].copyWith(
-        isCompleted: !_tasks[index].isCompleted,
-      );
-    });
-    _persistTasks();
-  }
-
-  void _deleteTask(int index) {
-    setState(() {
-      _tasks.removeAt(index);
-    });
-    _persistTasks();
-  }
-
-  Future<void> _confirmDeleteTask(int index) async {
-    final task = _tasks[index];
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.warning_amber_rounded),
-              SizedBox(width: 8),
-              Text('Delete Task'),
-            ],
-          ),
-          content: Text('Remove "${task.title}"?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton.icon(
-              onPressed: () => Navigator.pop(context, true),
-              icon: const Icon(Icons.delete),
-              label: const Text('Delete'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (shouldDelete == true) {
-      _deleteTask(index);
+    // Resolve user's cloud-saved name dynamically with an email fallback[cite: 2]
+    String userGreetingIdentity = email;
+    if (firebaseUser != null) {
+      final cloudUserDoc = ref.watch(firestoreUserProvider(firebaseUser.uid));
+      cloudUserDoc.whenData((doc) {
+        if (doc.exists && doc.data()?['name'] != null) {
+          userGreetingIdentity = doc.data()!['name'];
+        }
+      });
     }
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    final completedCount = _tasks.where((task) => task.isCompleted).length;
+    final completedCount = tasks.where((task) => task.isCompleted).length;
+
+    void showAddTaskDialog() async {
+      final controller = TextEditingController();
+      final title = await showDialog<String>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.add_task),
+                SizedBox(width: 8),
+                Text('Add Task'),
+              ],
+            ),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'Task title',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.edit_note),
+              ),
+              onSubmitted: (value) => Navigator.pop(context, value),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              FilledButton.icon(
+                onPressed: () => Navigator.pop(context, controller.text),
+                icon: const Icon(Icons.check),
+                label: const Text('Add'),
+              ),
+            ],
+          );
+        },
+      );
+      controller.dispose();
+
+      final trimmedTitle = title?.trim() ?? '';
+      if (trimmedTitle.isEmpty) return;
+
+      // Dispatch changes to global provider framework[cite: 2]
+      ref.read(taskListProvider.notifier).addTask(trimmedTitle);
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -177,7 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
             tooltip: 'View Profile',
           ),
           IconButton(
-            onPressed: _showAddTaskDialog,
+            onPressed: showAddTaskDialog,
             icon: const Icon(Icons.add),
             tooltip: 'Add task',
           ),
@@ -214,12 +133,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: Theme.of(context).textTheme.labelLarge,
                       ),
                       Text(
-                        widget.email,
+                        userGreetingIdentity,
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '$completedCount of ${_tasks.length} tasks completed',
+                        '$completedCount of ${tasks.length} tasks completed',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -229,96 +148,114 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _tasks.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.inbox_outlined,
-                              size: 64,
-                              color: Theme.of(context).colorScheme.outline,
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'No tasks yet',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 6),
-                            const Text('Tap + in the app bar to add a task'),
-                          ],
+            child: tasks.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.inbox_outlined,
+                          size: 64,
+                          color: Theme.of(context).colorScheme.outline,
                         ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _tasks.length,
-                        itemBuilder: (context, index) {
-                          final task = _tasks[index];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Dismissible(
-                              key: ValueKey('$index-${task.title}'),
-                              direction: DismissDirection.endToStart,
-                              onDismissed: (_) => _deleteTask(index),
-                              background: Container(
-                                alignment: Alignment.centerRight,
-                                padding: const EdgeInsets.only(right: 20),
-                                decoration: BoxDecoration(
-                                  color: Colors.red.shade400,
-                                  borderRadius: BorderRadius.circular(12),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No tasks yet',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 6),
+                        const Text('Tap + in the app bar to add a task'),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: tasks.length,
+                    itemBuilder: (context, index) {
+                      final task = tasks[index];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Dismissible(
+                          key: ValueKey('$index-${task.title}'),
+                          direction: DismissDirection.endToStart,
+                          onDismissed: (_) => ref.read(taskListProvider.notifier).deleteTask(index),
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade400,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.delete_sweep,
+                              color: Colors.white,
+                            ),
+                          ),
+                          child: Card(
+                            elevation: 0,
+                            color: task.isCompleted
+                                ? Theme.of(context).colorScheme.surfaceContainerHighest
+                                : null,
+                            child: ListTile(
+                              leading: IconButton(
+                                onPressed: () => ref.read(taskListProvider.notifier).toggleTask(index),
+                                icon: Icon(
+                                  task.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+                                  color: task.isCompleted
+                                      ? Colors.green
+                                      : Theme.of(context).colorScheme.outline,
                                 ),
-                                child: const Icon(
-                                  Icons.delete_sweep,
-                                  color: Colors.white,
+                                tooltip: task.isCompleted ? 'Mark incomplete' : 'Mark complete',
+                              ),
+                              title: Text(
+                                task.title,
+                                style: TextStyle(
+                                  decoration: task.isCompleted ? TextDecoration.lineThrough : null,
+                                  color: task.isCompleted ? Theme.of(context).colorScheme.outline : null,
                                 ),
                               ),
-                              child: Card(
-                                elevation: 0,
-                                color: task.isCompleted
-                                    ? Theme.of(context).colorScheme.surfaceContainerHighest
-                                    : null,
-                                child: ListTile(
-                                  leading: IconButton(
-                                    onPressed: () => _toggleTask(index),
-                                    icon: Icon(
-                                      task.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
-                                      color: task.isCompleted
-                                          ? Colors.green
-                                          : Theme.of(context).colorScheme.outline,
+                              subtitle: Row(
+                                children: [
+                                  Icon(
+                                    task.isCompleted ? Icons.task_alt : Icons.pending_actions,
+                                    size: 16,
+                                    color: task.isCompleted ? Colors.green : Colors.orange,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(task.isCompleted ? 'Completed' : 'Pending'),
+                                ],
+                              ),
+                              trailing: IconButton(
+                                onPressed: () async {
+                                  final shouldDelete = await showDialog<bool>(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      title: const Text('Delete Task'),
+                                      content: Text('Remove "${task.title}"?'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context, false),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        FilledButton(
+                                          onPressed: () => Navigator.pop(context, true),
+                                          child: const Text('Delete'),
+                                        ),
+                                      ],
                                     ),
-                                    tooltip: task.isCompleted ? 'Mark incomplete' : 'Mark complete',
-                                  ),
-                                  title: Text(
-                                    task.title,
-                                    style: TextStyle(
-                                      decoration: task.isCompleted ? TextDecoration.lineThrough : null,
-                                      color: task.isCompleted ? Theme.of(context).colorScheme.outline : null,
-                                    ),
-                                  ),
-                                  subtitle: Row(
-                                    children: [
-                                      Icon(
-                                        task.isCompleted ? Icons.task_alt : Icons.pending_actions,
-                                        size: 16,
-                                        color: task.isCompleted ? Colors.green : Colors.orange,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(task.isCompleted ? 'Completed' : 'Pending'),
-                                    ],
-                                  ),
-                                  trailing: IconButton(
-                                    onPressed: () => _confirmDeleteTask(index),
-                                    icon: const Icon(Icons.delete_outline),
-                                    tooltip: 'Delete task',
-                                  ),
-                                ),
+                                  );
+                                  if (shouldDelete == true) {
+                                    ref.read(taskListProvider.notifier).deleteTask(index);
+                                  }
+                                },
+                                icon: const Icon(Icons.delete_outline),
                               ),
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

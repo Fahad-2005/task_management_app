@@ -7,8 +7,7 @@ class UserProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Watch async network pipeline actions directly
-    final profileAsync = ref.watch(userProfileProvider);
+    final firebaseUser = ref.watch(authServiceProvider).currentUser;
 
     return Scaffold(
       appBar: AppBar(
@@ -17,68 +16,61 @@ class UserProfileScreen extends ConsumerWidget {
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
-          child: profileAsync.when(
-            loading: () => const CircularProgressIndicator(),
-            error: (err, stack) => Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline, color: Colors.red, size: 48),
-                const SizedBox(height: 12),
-                Text(
-                  'Network operation failed!',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 4),
-                Text(err.toString(), textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: () => ref.invalidate(userProfileProvider),
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Retry Connection'),
-                ),
-              ],
-            ),
-            data: (profile) => Card(
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircleAvatar(
-                      radius: 50,
-                      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                      backgroundImage: NetworkImage(profile.avatarUrl),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      profile.name,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
+          child: firebaseUser == null
+              ? const Text('No Authenticated Session Found')
+              : ref.watch(firestoreUserProvider(firebaseUser.uid)).when(
+                    loading: () => const CircularProgressIndicator(),
+                    error: (err, stack) => Text('Failed to load user profile: $err'),
+                    data: (snapshot) {
+                      // Fetch name directly from the Firestore document record[cite: 2]
+                      final String displayName = snapshot.data()?['name'] ?? 'App User';
+                      final String displayEmail = snapshot.data()?['email'] ?? firebaseUser.email ?? 'No Email';
+                      final fallbackAvatarUrl = 'https://robohash.org/${displayName.hashCode}.png?size=150x150';
+
+                      return Card(
+                        elevation: 2,
+                        child: Padding(
+                          padding: const EdgeInsets.all(24.0),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircleAvatar(
+                                radius: 50,
+                                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                                backgroundImage: NetworkImage(fallbackAvatarUrl),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                displayName,
+                                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                displayEmail,
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: Theme.of(context).colorScheme.outline,
+                                    ),
+                              ),
+                              const SizedBox(height: 24),
+                              OutlinedButton.icon(
+                                onPressed: () async {
+                                  await ref.read(authServiceProvider).signOut();
+                                  if (context.mounted) {
+                                    Navigator.of(context).popUntil((route) => route.isFirst);
+                                  }
+                                },
+                                icon: const Icon(Icons.logout),
+                                label: const Text('Sign Out Account'),
+                              ),
+                            ],
                           ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      profile.email,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.outline,
-                          ),
-                    ),
-                    const SizedBox(height: 24),
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        await ref.read(authServiceProvider).signOut();
-                        if (context.mounted) Navigator.pop(context);
-                      },
-                      icon: const Icon(Icons.logout),
-                      label: const Text('Sign Out Account'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+                        ),
+                      );
+                    },
+                  ),
           ),
-        ),
       ),
     );
   }

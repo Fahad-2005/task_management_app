@@ -1,29 +1,42 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:task_management_app/providers/app_providers.dart';
+import 'package:task_management_app/config/firebase_options_web.dart';
 import 'package:task_management_app/screens/splash_screen.dart';
-import 'package:task_management_app/screens/login_screen.dart';
-import 'package:task_management_app/screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Bootstrapping the application native initialization modules
-  await Firebase.initializeApp();
+  
+  if (kIsWeb) {
+    // Reading values from our untracked config holder to pass GitHub scanners safely
+    await Firebase.initializeApp(
+      options: const FirebaseOptions(
+        apiKey: FirebaseOptionsWeb.apiKey,
+        authDomain: FirebaseOptionsWeb.authDomain,
+        projectId: FirebaseOptionsWeb.projectId,
+        storageBucket: FirebaseOptionsWeb.storageBucket,
+        messagingSenderId: FirebaseOptionsWeb.messagingSenderId,
+        appId: FirebaseOptionsWeb.appId,
+        measurementId: FirebaseOptionsWeb.measurementId,
+      ),
+    );
+  } else {
+    await Firebase.initializeApp();
+  }
   
   runApp(
-    // ProviderScope manages all architectural state injection graphs
     const ProviderScope(
       child: MyApp(),
     ),
   );
 }
 
-class MyApp extends ConsumerWidget {
+class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Task Management App',
@@ -56,28 +69,7 @@ class MyApp extends ConsumerWidget {
           ),
         ),
       ),
-      home: const AuthGate(),
-    );
-  }
-}
-
-class AuthGate extends ConsumerWidget {
-  const AuthGate({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final authState = ref.watch(authStateProvider);
-
-    // Stream state pattern dynamically handles access controls
-    return authState.when(
-      data: (user) {
-        if (user != null) {
-          return HomeScreen(email: user.email ?? 'No Associated Identity');
-        }
-        return const LoginScreen();
-      },
-      loading: () => const SplashScreen(),
-      error: (_, __) => const LoginScreen(),
+      home: const SplashScreen(),
     );
   }
 }

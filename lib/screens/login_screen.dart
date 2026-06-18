@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:task_management_app/providers/app_providers.dart';
+import 'package:task_management_app/screens/home_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -11,6 +12,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isSignUpMode = false;
@@ -18,6 +20,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -33,6 +36,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       if (_isSignUpMode) {
         await authService.signUpWithEmailAndPassword(
+          _nameController.text.trim(),
           _emailController.text.trim(),
           _passwordController.text.trim(),
         );
@@ -42,7 +46,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           _passwordController.text.trim(),
         );
       }
-      // Routing is automatically handled by the Auth State Stream listener in main.dart
+
+      if (!mounted) return;
+      final currentUser = authService.currentUser;
+      if (currentUser != null) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => HomeScreen(email: currentUser.email ?? 'User'),
+          ),
+        );
+      }
     } catch (errorMessage) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -93,17 +106,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 fontWeight: FontWeight.bold,
                               ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _isSignUpMode
-                              ? 'Sign up to safely backup and manage your tasks'
-                              : 'Sign in to manage your tasks',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.outline,
-                              ),
-                        ),
                         const SizedBox(height: 28),
+                        if (_isSignUpMode) ...[
+                          TextFormField(
+                            controller: _nameController,
+                            keyboardType: TextInputType.name,
+                            textCapitalization: TextCapitalization.words,
+                            decoration: const InputDecoration(
+                              labelText: 'Full Name',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.badge_outlined),
+                            ),
+                            validator: (value) {
+                              if ((value ?? '').trim().isEmpty) {
+                                return 'Please enter your full name';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                         TextFormField(
                           controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
@@ -132,7 +154,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                           validator: (value) {
                             if ((value ?? '').trim().length < 6) {
-                              return 'Password must span 6 characters or greater';
+                              return 'Password must be 6 characters or greater';
                             }
                             return null;
                           },
