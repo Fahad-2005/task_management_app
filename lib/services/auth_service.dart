@@ -5,9 +5,7 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // Stream listening dynamically to user auth updates
   Stream<User?> get authStateChanges => _auth.authStateChanges();
-
   User? get currentUser => _auth.currentUser;
 
   Future<UserCredential> signInWithEmailAndPassword(String email, String password) async {
@@ -18,13 +16,11 @@ class AuthService {
     }
   }
 
-  // Signs up the user and saves their profile metadata straight to Firestore
   Future<UserCredential> signUpWithEmailAndPassword(String name, String email, String password) async {
     try {
       final credential = await _auth.createUserWithEmailAndPassword(email: email, password: password);
       
       if (credential.user != null) {
-        // Save user details to Cloud Firestore
         await _db.collection('users').doc(credential.user!.uid).set({
           'name': name,
           'email': email,
@@ -37,7 +33,6 @@ class AuthService {
     }
   }
 
-  // Streams real-time profile documents directly from Cloud Firestore
   Stream<DocumentSnapshot<Map<String, dynamic>>> watchUserProfile(String uid) {
     return _db.collection('users').doc(uid).snapshots();
   }
